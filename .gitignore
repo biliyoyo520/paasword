@@ -1,2 +1,26 @@
-test_files\
-250904\
+# 忽略操作系统生成的文件
+.DS_Store        # macOS的文件
+Thumbs.db        # Windows的文件
+
+# 忽略IDE生成的文件
+.vscode/          # VSCode的设置
+.idea/            # IntelliJ IDEA的设置
+*.iml             # IntelliJ项目文件
+
+# 忽略日志文件
+*.log             # 忽略所有日志文件
+
+# 忽略编译的文件
+/bin/
+*.class           # Java编译后的文件
+*.o               # C/C++编译后的文件
+
+# 忽略依赖包（node_modules 以 node.js 为例）
+node_modules/
+
+# 忽略敏感信息（例如配置文件中的 API 密钥等）
+.env              # 环境变量配置文件
+.gitignore
+
+test_files/
+250904/
