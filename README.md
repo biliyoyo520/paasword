@@ -8,6 +8,7 @@
 - [核心功能](#核心功能)
 - [使用方法](#使用方法)
 - [注意事项](#注意事项)
+- [安全漏洞报告](#-安全漏洞报告)
 
 ---
 
@@ -40,6 +41,13 @@ python password.py
 - 请复制完整的一整行密码，避免截断或误取  
 - 密码不包含易混淆字符，可以在可信设备获取密码后输入  
 
+## 🔐 安全漏洞报告
+
+如果您在本项目中发现任何安全漏洞，请通过电子邮件发送至 `mailme@yoyo250.fun` 进行负责任的报告。  
+为确保信息保密，您可以使用我的 [GPG 公钥](http://r2.yoyo250.fun/yoyo250.asc) 加密您的邮件。
+
+如遇邮件服务器故障等意外情况，您也可以通过主页上的 Twitter 私信与我联系。
+
 ---
 
 ## English Version
@@ -50,6 +58,7 @@ python password.py
 - [Features](#features)
 - [Usage](#usage)
 - [Notes](#notes)
+- [Security Contact](#-security-contact)
 
 ---
 
@@ -81,5 +90,12 @@ python password.py
 - UTF-8 terminal environment is recommended  
 - Always copy the full password line to avoid truncation  
 - Passwords avoid ambiguous characters and are safe for manual input on trusted devices  
+
+## 🔐 Security Contact
+
+If you discover any security vulnerabilities in this project, please report them responsibly via email to `mailme@yoyo250.fun`.  
+To ensure confidentiality, you may encrypt your message using my [GPG public key](http://r2.yoyo250.fun/yoyo250.asc).
+
+In case of unexpected email delivery issues (e.g., server downtime), you may also reach out via direct message on my homepage Twitter account.
 
 ---
