@@ -28,6 +28,7 @@ import hashlib
 import datetime
 from urllib.parse import urlparse
 from shutil import which
+from wcwidth import wcswidth
 
 # KDF / encoding config
 DKLEN_BYTES = 32
@@ -145,10 +146,11 @@ def print_boxed(hex_line: str, final_pw: str):
         "",
         "提示：复制完整的一整行密码（避免只取末尾部分）"
     ]
-    width = max(len(ln) for ln in lines) + 4
+    width = max(wcswidth(ln) for ln in lines) + 8
     print("┌" + "─"*(width-2) + "┐")
     for ln in lines:
-        print("│ " + ln.ljust(width-4) + " │")
+        padding = width - 4 - wcswidth(ln)
+        print("│ " + ln + " " * padding + " │")
     print("└" + "─"*(width-2) + "┘")
 
 def sign_with_time(chpath, outfn, fake_time):
@@ -433,23 +435,25 @@ def main():
         sig2_bytes = open(sig2, "rb").read()
         results.append(("sig2.bin (full)", sig2_bytes))
 
-<<<<<<< HEAD
 
     # 新增：派生结果与时间戳对比，框内外显示
     def print_time_and_pw_box(file_name, ts, fake_time, hex_out, final_pw):
         dt_utc = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc)
-        print("┌" + "─"*44 + "┐")
-        print(f"│ {file_name} created时间戳: {ts} │")
-        print(f"│ UTC时间: {dt_utc.strftime('%Y-%m-%d %H:%M:%S')} │")
-        print(f"│ fake_time: {fake_time} │")
-        print("└" + "─"*44 + "┘")
+        lines = [
+        f"{file_name} created时间戳: {ts}",
+        f"UTC时间: {dt_utc.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"fake_time: {fake_time}"
+                ]
+        width = max(wcswidth(ln) for ln in lines) + 4  # 加上边框和空格
+        print("┌" + "─"*(width-2) + "┐")
+        for ln in lines:
+            padding = width - 4 - wcswidth(ln)
+            print("│ " + ln + " " * padding + " │")
+        print("└" + "─"*(width-2) + "┘")
         print_boxed(hex_out, final_pw)
-
+        
     # 记录每个结果的派生信息
     derived_results = []
-=======
-    # 对每个结果分别进行派生并输出
->>>>>>> 07a3b0e (create)
     for idx, (tag, data) in enumerate(results):
         pepper = hashlib.sha256(data).digest()
         secret_material = pwd + b"|" + username.encode("utf-8") + b"|" + pepper
@@ -463,7 +467,6 @@ def main():
         hex_out = derived.hex()
         bstr = bytes_to_bitstring(derived)
         final_pw = bits_to_crockford(bstr, out_chars)
-<<<<<<< HEAD
         derived_results.append({
             "idx": idx,
             "tag": tag,
@@ -506,21 +509,6 @@ def main():
         for dr in derived_results:
             print(f"\n=== 基于 {dr['tag']} 的派生结果 ===")
             print_boxed(dr["hex_out"], dr["final_pw"])
-=======
-
-        # 新增：如果时间戳对的上，则在框内显示
-        if idx == 0 and ts1 is not None and fake_ts is not None and ts1 == fake_ts:
-            print("\n=== 时间对的上的 sig1.bin 信息 ===")
-            print_time_box("sig1.bin", ts1, actual_fake)
-            print_boxed(hex_out, final_pw)
-        elif idx == 1 and ts2 is not None and fake_ts is not None and ts2 == fake_ts:
-            print("\n=== 时间对的上的 sig2.bin 信息 ===")
-            print_time_box("sig2.bin", ts2, actual_fake)
-            print_boxed(hex_out, final_pw)
-        else:
-            print(f"\n=== 基于 {tag} 的派生结果 ===")
-            print_boxed(hex_out, final_pw)
->>>>>>> 07a3b0e (create)
 
     if not use_argon2:
         print("\n提示：未检测到 argon2-cffi，已使用 PBKDF2 作为退路。要更强安全请安装 argon2-cffi。")
