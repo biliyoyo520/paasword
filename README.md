@@ -1,4 +1,4 @@
-# 🔐 Password Master v0.9.1
+# 🔐 Password Master v0.9.2
 
 简体中文 | [English below](#english-version)
 
