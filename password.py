@@ -520,9 +520,11 @@ def main():
 
     if not use_argon2:
         print("\n提示：未检测到 argon2-cffi，已使用 PBKDF2 作为退路。要更强安全请安装 argon2-cffi。")
+        input('按下 <Enter> 退出')
 
     print("\n脚本完成。若要保留或删除临时签名文件，请查看：", tmpd)
     print("提示：本脚本使用 MPI 派生模式；只要 key 与输入（域名、用户名、口令）一致，结果在不同设备/时间应保持稳定。")
+    input('按下 <Enter> 退出')
 
 if __name__ == "__main__":
     main()
