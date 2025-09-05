@@ -52,6 +52,7 @@ except Exception:
 def check_gpg_installed():
     if which("gpg") is None:
         print("错误：未找到 gpg。请先安装 GnuPG 并确保 gpg 在 PATH 中。", file=sys.stderr)
+        input('按下 <Enter> 退出')
         sys.exit(1)
 
 def run_cmd_bytes(cmd, timeout=None):
@@ -69,6 +70,7 @@ def get_card_status_text():
             print(p.stdout.decode(errors="ignore"), file=sys.stderr)
         except Exception:
             print(p.stdout, file=sys.stderr)
+        input('按下 <Enter> 退出')
         sys.exit(2)
     return p.stdout.decode(errors="ignore")
 
@@ -270,6 +272,7 @@ def main():
     # 校验 FAKE_TIME 格式
     if not validate_fake_time(FAKE_TIME.strip() if FAKE_TIME else ""):
         print("错误：FAKE_TIME 必须形如 YYYYMMDDThhmmss（或留空）", file=sys.stderr)
+        input('按下 <Enter> 退出')
         sys.exit(1)
 
     card_text = get_card_status_text()
@@ -281,6 +284,7 @@ def main():
     keyid, algo, created = parse_keyid_algo_and_created(card_text)
     if not keyid:
         print("未在卡上解析到 keyid，请确认卡可用。", file=sys.stderr)
+        input('按下 <Enter> 退出')
         sys.exit(2)
     created_fake = dt_to_gpg_fake_time(created) if created else None
 
@@ -298,6 +302,7 @@ def main():
             ans = input("检测到 DSA：某些实现对 k 使用随机数，可能导致不可复现。仍要继续尝试吗？(y/N): ").strip().lower()
             if ans != "y":
                 print("退出。")
+                input('按下 <Enter> 退出')
                 sys.exit(3)
 
     username = USERNAME.strip() if USERNAME else ""
@@ -314,6 +319,7 @@ def main():
     pwd2 = getpass.getpass("请再次输入你的简单密码（回车后不回显）：").encode("utf-8")
     if pwd1 != pwd2:
         print("错误：两次输入的密码不一致，请重新运行脚本。", file=sys.stderr)
+        input('按下 <Enter> 退出')
         sys.exit(7)
     pwd = pwd1
 
@@ -350,6 +356,7 @@ def main():
     if not os.path.exists(sig1):
         print("第 1 次签名未生成签名文件，请检查 gpg 输出并重试。")
         print(f"临时目录：{tmpd}")
+        input('按下 <Enter> 退出')
         sys.exit(4)
 
 
@@ -372,6 +379,7 @@ def main():
     if not os.path.exists(sig2):
         print("第 2 次签名未生成签名文件，请检查 gpg 输出并重试。")
         print(f"临时目录：{tmpd}")
+        input('按下 <Enter> 退出')
         sys.exit(5)
 
     ts2, _ = parse_sig_created_unix(sig2)
