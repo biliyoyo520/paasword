@@ -16,6 +16,7 @@ FAKE_TIME = "20260802T103000"  # 可留空；如提供，须为 "YYYYMMDDThhmmss
 USERNAME = ""
 DOMAIN_OVERRIDE = ""
 DESIRED_CHARS = 20
+LANGUAGE = "en_us"  # 可选 "zh_cn"
 # -------------------------------------------------------
 
 import os
@@ -26,6 +27,7 @@ import subprocess
 import getpass
 import hashlib
 import datetime
+import json
 from urllib.parse import urlparse
 from shutil import which
 from wcwidth import wcswidth
@@ -47,12 +49,34 @@ try:
 except Exception:
     use_argon2 = False
 
+# ---------- 翻译 i18n ----------
+class I18n:
+    def __init__(self, lang="en_us"):
+        base_path = os.path.join(os.path.dirname(__file__), "locales")
+        lang_file = os.path.join(base_path, f"{lang}.json")
+        if not os.path.exists(lang_file):
+            lang_file = os.path.join(base_path, "en_us.json")
+        with open(lang_file, "r", encoding="utf-8") as f:
+            self.translations = json.load(f)
+
+    def t(self, key, **kwargs):
+        text = self.translations.get(key, key)
+        if kwargs:
+            try:
+                text = text.format(**kwargs)
+            except Exception:
+                pass
+        return text
+
+LANG = os.environ.get("APP_LANG", LANGUAGE)   # 默认英文，可以通过环境变量切换
+_ = I18n(LANG).t
+
 # ---------- 工具函数 ----------
 
 def check_gpg_installed():
     if which("gpg") is None:
-        print("错误：未找到 gpg。请先安装 GnuPG 并确保 gpg 在 PATH 中。", file=sys.stderr)
-        input('按下 <Enter> 退出')
+        print(_("error_gpg_not_found"), file=sys.stderr)
+        input(_('enter_to_exit'))
         sys.exit(1)
 
 def run_cmd_bytes(cmd, timeout=None):
@@ -65,12 +89,12 @@ def run_cmd_bytes(cmd, timeout=None):
 def get_card_status_text():
     p = run_cmd_bytes(["gpg", "--card-status"], timeout=15)
     if p.returncode != 0:
-        print("gpg --card-status 返回错误：", file=sys.stderr)
+        print(_("gpg_card_status_error"), file=sys.stderr)
         try:
             print(p.stdout.decode(errors="ignore"), file=sys.stderr)
         except Exception:
             print(p.stdout, file=sys.stderr)
-        input('按下 <Enter> 退出')
+        input(_('enter_to_exit'))
         sys.exit(2)
     return p.stdout.decode(errors="ignore")
 
@@ -140,13 +164,13 @@ def derive_pbkdf2(secret: bytes, salt: bytes, dklen: int):
 def print_boxed(hex_line: str, final_pw: str):
     lines = [
         "Done!",
-        "Hash结果：",
+        _("result_hash"),
         f"\t{hex_line}",
         "",
-        "最终密码：",
+        _("result_password"),
         f"\t{final_pw}",
         "",
-        "提示：复制完整的一整行密码（避免只取末尾部分）"
+        _("result_note")
     ]
     width = max(wcswidth(ln) for ln in lines) + 8
     print("┌" + "─"*(width-2) + "┐")
@@ -267,24 +291,27 @@ def bits_to_crockford(bitstr: str, out_chars: int) -> str:
 
 # ---------- 主流程 ----------
 def main():
+    # 修复变量作用域问题
+    global _
+
     check_gpg_installed()
 
     # 校验 FAKE_TIME 格式
     if not validate_fake_time(FAKE_TIME.strip() if FAKE_TIME else ""):
-        print("错误：FAKE_TIME 必须形如 YYYYMMDDThhmmss（或留空）", file=sys.stderr)
-        input('按下 <Enter> 退出')
+        print(_("fake_time_format_error"), file=sys.stderr)
+        input(_('enter_to_exit'))
         sys.exit(1)
 
     card_text = get_card_status_text()
-    print("gpg --card-status 部分输出（前几行）：")
+    print(_("gpg_card_status_output"))
     for i,l in enumerate(card_text.splitlines()):
         if i>=8: break
         print(l)
 
     keyid, algo, created = parse_keyid_algo_and_created(card_text)
     if not keyid:
-        print("未在卡上解析到 keyid，请确认卡可用。", file=sys.stderr)
-        input('按下 <Enter> 退出')
+        print(_("unknown_keyid"), file=sys.stderr)
+        input(_('enter_to_exit'))
         sys.exit(2)
     created_fake = dt_to_gpg_fake_time(created) if created else None
 
@@ -294,32 +321,32 @@ def main():
     else:
         actual_fake = created_fake or "20000101T000000"
 
-    print(f"使用的 faked-system-time = {actual_fake} (请求: {requested}, 卡创建: {created_fake})")
+    print(_("fake_time_note", actual_fake=actual_fake, requested=requested or "None", created_fake=created_fake or "None"))
 
     if algo:
         al = algo.lower()
         if al.startswith("dsa"):
-            ans = input("检测到 DSA：某些实现对 k 使用随机数，可能导致不可复现。仍要继续尝试吗？(y/N): ").strip().lower()
+            ans = input(_("EdDSA_detected")).strip().lower()
             if ans != "y":
-                print("退出。")
-                input('按下 <Enter> 退出')
+                print(_("exit"))
+                input(_('enter_to_exit'))
                 sys.exit(3)
 
     username = USERNAME.strip() if USERNAME else ""
     if not username:
-        username = input("请输入用户名（login）：").strip()
+        username = input(_("input_username")).strip()
 
     domain_raw = DOMAIN_OVERRIDE.strip() if DOMAIN_OVERRIDE else ""
     if not domain_raw:
-        domain_raw = input("请输入站点域名或 URL：").strip()
+        domain_raw = input(_("input_domain")).strip()
     domain = normalize_domain(domain_raw)
 
     # 输入口令（两次确认）
-    pwd1 = getpass.getpass("请输入你的简单密码（回车后不回显）：").encode("utf-8")
-    pwd2 = getpass.getpass("请再次输入你的简单密码（回车后不回显）：").encode("utf-8")
+    pwd1 = getpass.getpass(_("input_password")).encode("utf-8")
+    pwd2 = getpass.getpass(_("input_password_confirm")).encode("utf-8")
     if pwd1 != pwd2:
-        print("错误：两次输入的密码不一致，请重新运行脚本。", file=sys.stderr)
-        input('按下 <Enter> 退出')
+        print(_("error_password_mismatch"), file=sys.stderr)
+        input(_('enter_to_exit'))
         sys.exit(7)
     pwd = pwd1
 
@@ -331,7 +358,7 @@ def main():
     max_chars = (DKLEN_BYTES * 8) // bits_per_char
     out_chars = max(1, min(DESIRED_CHARS, max_chars))
     if out_chars != DESIRED_CHARS:
-        print(f"提示：DESIRED_CHARS 已从 {DESIRED_CHARS} 调整为 {out_chars}（上限 {max_chars}）。")
+        print(_("desired_chars_adjusted", desired_chars=DESIRED_CHARS, out_chars=out_chars, max_chars=max_chars))
 
     tmpd = tempfile.mkdtemp(prefix="gpgderive_")
     chpath = os.path.join(tmpd, "challenge.txt")
@@ -349,23 +376,23 @@ def main():
         pass
 
     # 第 1 次签名
-    print("进行第 1 次签名（可能需要 PIN / touch）：")
+    print(_("signing_first"))
     p1 = sign_with_time(chpath, sig1, actual_fake)
     print(p1.stdout.decode(errors="ignore"))
 
     if not os.path.exists(sig1):
-        print("第 1 次签名未生成签名文件，请检查 gpg 输出并重试。")
-        print(f"临时目录：{tmpd}")
-        input('按下 <Enter> 退出')
+        print(_("sig1_not_found"))
+        print(_("tmp_dir", tmpd=tmpd))
+        input(_('enter_to_exit'))
         sys.exit(4)
 
 
-    ts1, _ = parse_sig_created_unix(sig1)
-    mpi1, _ = parse_sig_mpi(sig1)
+    ts1, _dump = parse_sig_created_unix(sig1)
+    mpi1, _dump = parse_sig_mpi(sig1)
 
     # 强制第二次签名使用与第一次相同的 fake time，避免 ±1 秒差异
     use_fake_for_second = actual_fake
-    print(f"第二次签名强制使用相同的 faked-system-time = {use_fake_for_second}")
+    print(_("check_fake_time", use_fake_for_second=use_fake_for_second))
 
     try:
         subprocess.run(["gpgconf", "--kill", "gpg-agent"], check=False)
@@ -373,22 +400,22 @@ def main():
         pass
 
     # 第 2 次签名
-    print("进行第 2 次签名（可能需要 PIN / touch）：")
+    print(_("signing_second"))
     p2 = sign_with_time(chpath, sig2, use_fake_for_second)
     print(p2.stdout.decode(errors="ignore"))
     if not os.path.exists(sig2):
-        print("第 2 次签名未生成签名文件，请检查 gpg 输出并重试。")
-        print(f"临时目录：{tmpd}")
-        input('按下 <Enter> 退出')
+        print(_("sig2_not_found"))
+        print(_("tmp_dir", tmpd=tmpd))
+        input(_('enter_to_exit'))
         sys.exit(5)
 
-    ts2, _ = parse_sig_created_unix(sig2)
-    mpi2, _ = parse_sig_mpi(sig2)
+    ts2, _dump = parse_sig_created_unix(sig2)
+    mpi2, _dump = parse_sig_mpi(sig2)
 
     # 新增：对比 fake_time 与签名 created 时间戳，遇到不符时打印提示框
     def print_time_box(file_name, ts, fake_time):
         if ts is None:
-            print(f"{file_name} 未能解析到 created 时间戳。")
+            print(_("sig_created_timestamp_not_parsed", file_name=file_name))
             return
         dt_utc = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc)
         print("┌" + "─"*44 + "┐")
@@ -408,15 +435,15 @@ def main():
     fake_ts = fake_time_to_ts(actual_fake)
     box_printed = False
     if ts1 is not None and fake_ts is not None and ts1 != fake_ts:
-        print("\n==== 时间不符警告（sig1.bin） ====")
+        print(_("time_mismatch_warning", file_name="sig1.bin"))
         print_time_box("sig1.bin", ts1, actual_fake)
         box_printed = True
     if ts2 is not None and fake_ts is not None and ts2 != fake_ts:
-        print("\n==== 时间不符警告（sig2.bin） ====")
+        print(_("time_mismatch_warning", file_name="sig2.bin"))
         print_time_box("sig2.bin", ts2, actual_fake)
         box_printed = True
     if box_printed:
-        print("\n【注意】签名时间与 fake_time 不符，可能导致密码不一致。请检查时间设置或重试。\n")
+        print(_("time_mismatch_note"))
 
 
     # 处理 MPI 与可能的多个输出
@@ -424,22 +451,22 @@ def main():
     if (mpi1 is not None) and (mpi2 is not None):
         h1 = hashlib.sha256(mpi1).hexdigest()
         h2 = hashlib.sha256(mpi2).hexdigest()
-        print(f"MPI1 SHA256={h1}\nMPI2 SHA256={h2}")
+        print(f"{_('mpi1_sha256', h1=h1)}\n{_('mpi2_sha256', h2=h2)}")
         if h1 == h2:
-            print("MPI 一致：使用该 MPI 派生 pepper。")
+            print(_("mpi_consistent"))
             results.append(("MPI (一致)", mpi1))
         else:
-            print("警告：两次签名的 MPI 不一致！将分别派生两个密码以便对比。")
+            print(_("mpi_mismatch_warning"))
             results.append(("MPI1", mpi1))
             results.append(("MPI2", mpi2))
     elif (mpi1 is not None) and (mpi2 is None):
-        print("仅解析到 sig1 的 MPI：使用 sig1 的 MPI。")
+        print(_("only_sig1_mpi"))
         results.append(("MPI1", mpi1))
     elif (mpi1 is None) and (mpi2 is not None):
-        print("仅解析到 sig2 的 MPI：使用 sig2 的 MPI。")
+        print(_("only_sig2_mpi"))
         results.append(("MPI2", mpi2))
     else:
-        print("未能解析到任一 MPI，回退使用 sig2 的二进制 SHA256 作为 pepper（次优）。")
+        print(_("no_mpi_fallback"))
         sig2_bytes = open(sig2, "rb").read()
         results.append(("sig2.bin (full)", sig2_bytes))
 
@@ -448,9 +475,9 @@ def main():
     def print_time_and_pw_box(file_name, ts, fake_time, hex_out, final_pw):
         dt_utc = datetime.datetime.fromtimestamp(ts, datetime.timezone.utc)
         lines = [
-        f"{file_name} created时间戳: {ts}",
-        f"UTC时间: {dt_utc.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"fake_time: {fake_time}"
+        _("sig_created_timestamp", file_name=file_name, ts=ts),
+        _("utc_time", utc_time=dt_utc.strftime('%Y-%m-%d %H:%M:%S')),
+        _("fake_time_value", fake_time=fake_time)
                 ]
         width = max(wcswidth(ln) for ln in lines) + 4  # 加上边框和空格
         print("┌" + "─"*(width-2) + "┐")
@@ -492,39 +519,39 @@ def main():
         if sig1_match:
             # 框外：另一个文件信息与密码
             if len(derived_results) > 1:
-                print(f"\n=== sig2.bin 信息与派生密码===")
-                print(f"sig2.bin created时间戳: {ts2}")
+                print(_("sig_info_and_password", file_name="sig2.bin"))
+                print(_("sig_created_timestamp", file_name="sig2.bin", ts=ts2))
                 if ts2 is not None:
                     dt_utc2 = datetime.datetime.fromtimestamp(ts2, datetime.timezone.utc)
-                    print(f"UTC时间: {dt_utc2.strftime('%Y-%m-%d %H:%M:%S')}")
-                    print(f"sig2.bin hash：{derived_results[1]['hex_out']}")
-                    print(f"sig2.bin 派生密码：{derived_results[1]['final_pw']}")
-            print("\n=== 【时间正确】 sig1.bin 信息===")
+                    print(_("utc_time", utc_time=dt_utc2.strftime('%Y-%m-%d %H:%M:%S')))
+                    print(_("sig_hash", file_name="sig2.bin", hash=derived_results[1]['hex_out']))
+                    print(_("derived_password", file_name="sig2.bin", password=derived_results[1]['final_pw']))
+            print(_("time_correct_sig_info", file_name="sig1.bin"))
             print_time_and_pw_box("sig1.bin", ts1, actual_fake, derived_results[0]["hex_out"], derived_results[0]["final_pw"])
         else:
             # 框外：另一个文件信息与密码
-            print(f"\n=== sig1.bin 信息与派生密码===")
-            print(f"sig1.bin created时间戳: {ts1}")
+            print(_("sig_info_and_password", file_name="sig1.bin"))
+            print(_("sig_created_timestamp", file_name="sig1.bin", ts=ts1))
             if ts1 is not None:
                 dt_utc1 = datetime.datetime.fromtimestamp(ts1, datetime.timezone.utc)
-                print(f"UTC时间: {dt_utc1.strftime('%Y-%m-%d %H:%M:%S')}")
-                print(f"sig1.bin hash：{derived_results[0]['hex_out']}")
-                print(f"sig1.bin 派生密码：{derived_results[0]['final_pw']}")
-            print("\n=== 【时间正确】 sig2.bin 信息===")
-            print_time_and_pw_box("sig2.bin", ts2, actual_fake, derived_results[-1]["hex_out"], derived_results[-1]["final_pw"])
+                print(_("utc_time", utc_time=dt_utc1.strftime('%Y-%m-%d %H:%M:%S')))
+                print(_("sig_hash", file_name="sig1.bin", hash=derived_results[0]['hex_out']))
+                print(_("derived_password", file_name="sig1.bin", password=derived_results[0]['final_pw']))
+            print(_("time_correct_sig_info", file_name="sig2.bin"))
+        # 框外：另一个文件信息与密码
     else:
         # 都不对得上，按原逻辑输出
         for dr in derived_results:
-            print(f"\n=== 基于 {dr['tag']} 的派生结果 ===")
+            print(_("derived_result_based_on", tag=dr['tag']))
             print_boxed(dr["hex_out"], dr["final_pw"])
 
     if not use_argon2:
-        print("\n提示：未检测到 argon2-cffi，已使用 PBKDF2 作为退路。要更强安全请安装 argon2-cffi。")
-        input('按下 <Enter> 退出')
+        print(_("argon2_not_found"))
+        input(_('enter_to_exit'))
 
-    print("\n脚本完成。若要保留或删除临时签名文件，请查看：", tmpd)
-    print("提示：本脚本使用 MPI 派生模式；只要 key 与输入（域名、用户名、口令）一致，结果在不同设备/时间应保持稳定。")
-    input('按下 <Enter> 退出')
+    print(_("script_finished", tmpd=tmpd))
+    print(_("script_note"))
+    input(_('enter_to_exit'))
 
 if __name__ == "__main__":
     main()
