@@ -33,6 +33,9 @@ Password Master 是一个基于实体密钥签名的密码生成器。用户输�
 python password.py
 ```
 
+![Demo](https://ipfs.io/ipns/k51qzi5uqu5dk24aigb9itluhs55zvxhppipz539bjddsxstb4mylbrunisdd9)
+
+
 ## 📌 注意事项
 
 - 密码生成依赖 GPG 私钥，请确保密钥已导入并可用  
@@ -82,6 +85,9 @@ It supports time forgery, allowing you to simulate future or past timestamps (as
 ```bash
 python password.py
 ```
+
+![Demo](https://ipfs.io/ipns/k51qzi5uqu5dk24aigb9itluhs55zvxhppipz539bjddsxstb4mylbrunisdd9)
+
 
 ### 📌 Notes
 
