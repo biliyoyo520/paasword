@@ -31,6 +31,8 @@ import json
 from urllib.parse import urlparse
 from shutil import which
 from wcwidth import wcswidth
+import atexit
+import shutil
 
 # KDF / encoding config
 DKLEN_BYTES = 32
@@ -85,6 +87,56 @@ def run_cmd_bytes(cmd, timeout=None):
         return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
     except subprocess.TimeoutExpired:
         return subprocess.CompletedProcess(cmd, returncode=124, stdout=b"<timeout>\n")
+
+
+def list_locale_files():
+    base_path = os.path.join(os.path.dirname(__file__), "locales")
+    files = []
+    try:
+        for fn in os.listdir(base_path):
+            if fn.endswith('.json'):
+                files.append(fn)
+    except Exception:
+        pass
+    return sorted(files)
+
+
+def load_locale_header(file_name):
+    # try to read Name field; fallback to filename
+    base_path = os.path.join(os.path.dirname(__file__), "locales")
+    path = os.path.join(base_path, file_name)
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data.get('Name', file_name)
+    except Exception:
+        return file_name
+
+
+def prompt_language_choice():
+    files = list_locale_files()
+    if not files:
+        return LANG
+    print(_("select_language_prompt"))
+    for i,fn in enumerate(files, start=1):
+        name = load_locale_header(fn)
+        print(f"[{i}]{name} ({fn})")
+    sel = input(f"[1-{len(files)}] ").strip()
+    try:
+        idx = int(sel) - 1
+        if 0 <= idx < len(files):
+            return os.path.splitext(files[idx])[0]
+    except Exception:
+        pass
+    return LANG
+
+
+def prompt_key_source_choice():
+    print(_("select_key_source_prompt"))
+    print(f"[1]{_('key_source_physical')}")
+    print(f"[2]{_('key_source_privfile')}")
+    sel = input("[1-2] ").strip()
+    return sel
 
 def get_card_status_text():
     p = run_cmd_bytes(["gpg", "--card-status"], timeout=15)
@@ -179,7 +231,7 @@ def print_boxed(hex_line: str, final_pw: str):
         print("│ " + ln + " " * padding + " │")
     print("└" + "─"*(width-2) + "┘")
 
-def sign_with_time(chpath, outfn, fake_time):
+def sign_with_time(chpath, outfn, fake_time, gpg_homedir=None, signer_keyid=None):
     """执行签名；使用 "=" 形式避免 Windows 解析问题。"""
     if os.path.exists(outfn):
         os.remove(outfn)
@@ -191,11 +243,23 @@ def sign_with_time(chpath, outfn, fake_time):
         "--output", outfn,
         chpath,
     ]
+    if gpg_homedir:
+        cmd = ["gpg", "--homedir", gpg_homedir, f"--faked-system-time={fake_time}", "--digest-algo", "SHA256", "--detach-sign", "--output", outfn]
+        if signer_keyid:
+            cmd += ["--local-user", signer_keyid]
+        cmd += [chpath]
     p = run_cmd_bytes(cmd)
     return p
 
 def parse_sig_created_unix(sigfile):
-    p = run_cmd_bytes(["gpg", "--list-packets", "--verbose", sigfile], timeout=15)
+    return parse_sig_created_unix(sigfile, None)
+
+
+def parse_sig_created_unix(sigfile, gpg_homedir=None):
+    cmd = ["gpg", "--list-packets", "--verbose", sigfile]
+    if gpg_homedir:
+        cmd = ["gpg", "--homedir", gpg_homedir, "--list-packets", "--verbose", sigfile]
+    p = run_cmd_bytes(cmd, timeout=15)
     out = p.stdout.decode(errors="ignore")
     m = re.search(r"created\s+(\d+)", out)
     if m:
@@ -215,7 +279,14 @@ def parse_sig_mpi(sigfile):
       - ECDSA/EdDSA/DSA：解析 'r:' 与 's:' 两个 MPI，按 r||s 拼接。
     返回 (bytes or None, full_dump_text)
     """
-    p = run_cmd_bytes(["gpg", "--list-packets", "--verbose", sigfile], timeout=15)
+    return parse_sig_mpi(sigfile, None)
+
+
+def parse_sig_mpi(sigfile, gpg_homedir=None):
+    cmd = ["gpg", "--list-packets", "--verbose", sigfile]
+    if gpg_homedir:
+        cmd = ["gpg", "--homedir", gpg_homedir, "--list-packets", "--verbose", sigfile]
+    p = run_cmd_bytes(cmd, timeout=15)
     out = p.stdout.decode(errors="ignore")
     lines = out.splitlines()
 
@@ -261,6 +332,47 @@ def parse_sig_mpi(sigfile):
 
     return None, out
 
+
+def get_key_info_from_homedir(homedir):
+    # return (keyid, algo, created_iso_or_none)
+    try:
+        p = run_cmd_bytes(["gpg", "--homedir", homedir, "--with-colons", "--list-keys"]) 
+        out = p.stdout.decode(errors="ignore")
+        keyid = None; algo = None; created = None
+        for line in out.splitlines():
+            parts = line.split(":")
+            if parts and parts[0] == 'pub':
+                # pub:<flags>:keylen:algo:keyid:created:...
+                try:
+                    algo_num = parts[3]
+                    keyid = parts[4]
+                    created_epoch = int(parts[5]) if parts[5].isdigit() else None
+                    if created_epoch:
+                        dt = datetime.datetime.fromtimestamp(created_epoch, datetime.timezone.utc)
+                        created = dt.strftime('%Y-%m-%d %H:%M:%S')
+                    algo_map = {'1':'RSA','17':'DSA','19':'ECDSA','22':'EdDSA'}
+                    algo = algo_map.get(algo_num, None)
+                    break
+                except Exception:
+                    continue
+        return keyid, algo, created
+    except Exception:
+        return None, None, None
+
+
+def register_gpg_homedir_cleanup(homedir):
+    """Register atexit handler to remove homedir unless KEEP_GPG_HOMEDIR is set."""
+    def _cleanup():
+        try:
+            if os.environ.get('KEEP_GPG_HOMEDIR'):
+                print(_("cleanup_homedir_kept", homedir=homedir))
+            else:
+                shutil.rmtree(homedir, ignore_errors=True)
+                print(_("cleanup_homedir_deleted", homedir=homedir))
+        except Exception:
+            pass
+    atexit.register(_cleanup)
+
 # ---------- 新的 bits->alphabet 映射函数 ----------
 def bits_to_crockford(bitstr: str, out_chars: int) -> str:
     """
@@ -293,6 +405,10 @@ def bits_to_crockford(bitstr: str, out_chars: int) -> str:
 def main():
     # 修复变量作用域问题
     global _
+    # language selection
+    chosen_lang = prompt_language_choice()
+    # reload translations
+    _ = I18n(chosen_lang).t
 
     check_gpg_installed()
 
@@ -302,13 +418,50 @@ def main():
         input(_('enter_to_exit'))
         sys.exit(1)
 
-    card_text = get_card_status_text()
+    # select key source
+    key_source_sel = prompt_key_source_choice()
+    gpg_homedir = None
+    using_temp_homedir = False
+    if key_source_sel == '2':
+        print(_("enter_key_file_path"), end='')
+        keyfile = input().strip()
+        print(_("importing_key"))
+        gpg_homedir = tempfile.mkdtemp(prefix="gpg_temp_home_")
+        using_temp_homedir = True
+        # initialize minimal dir
+        os.makedirs(os.path.join(gpg_homedir, 'private-keys-v1.d'), exist_ok=True)
+        imp = run_cmd_bytes(["gpg", "--homedir", gpg_homedir, "--import", keyfile], timeout=30)
+        out = imp.stdout.decode(errors='ignore')
+        if imp.returncode != 0:
+            print(_("import_failed", output=out))
+            input(_('enter_to_exit'))
+            sys.exit(6)
+        else:
+            print(_("using_privkey_note"))
+            register_gpg_homedir_cleanup(gpg_homedir)
+            print(_("cleanup_homedir_prompt", homedir=gpg_homedir))
+
+    # card or homedir status: avoid --card-status when using temp homedir
+    if gpg_homedir:
+        keyid, algo, created = get_key_info_from_homedir(gpg_homedir)
+        card_text = f"Temporary GPG home: {gpg_homedir}\nkeyid={keyid} algo={algo} created={created}\n(Using imported OpenPGP secret key)"
+    else:
+        card_text = get_card_status_text()
     print(_("gpg_card_status_output"))
     for i,l in enumerate(card_text.splitlines()):
         if i>=8: break
         print(l)
 
-    keyid, algo, created = parse_keyid_algo_and_created(card_text)
+    # keyid/algo/created extraction
+    if gpg_homedir:
+        # try homedir parsed values already
+        if 'keyid=' in card_text:
+            m = re.search(r"keyid=(\w+)", card_text)
+            keyid = m.group(1) if m else None
+        else:
+            keyid, algo, created = get_key_info_from_homedir(gpg_homedir)
+    else:
+        keyid, algo, created = parse_keyid_algo_and_created(card_text)
     if not keyid:
         print(_("unknown_keyid"), file=sys.stderr)
         input(_('enter_to_exit'))
@@ -377,7 +530,7 @@ def main():
 
     # 第 1 次签名
     print(_("signing_first"))
-    p1 = sign_with_time(chpath, sig1, actual_fake)
+    p1 = sign_with_time(chpath, sig1, actual_fake, gpg_homedir=gpg_homedir, signer_keyid=keyid)
     print(p1.stdout.decode(errors="ignore"))
 
     if not os.path.exists(sig1):
@@ -387,8 +540,8 @@ def main():
         sys.exit(4)
 
 
-    ts1, _dump = parse_sig_created_unix(sig1)
-    mpi1, _dump = parse_sig_mpi(sig1)
+    ts1, _dump = parse_sig_created_unix(sig1, gpg_homedir)
+    mpi1, _dump = parse_sig_mpi(sig1, gpg_homedir)
 
     # 强制第二次签名使用与第一次相同的 fake time，避免 ±1 秒差异
     use_fake_for_second = actual_fake
@@ -401,7 +554,7 @@ def main():
 
     # 第 2 次签名
     print(_("signing_second"))
-    p2 = sign_with_time(chpath, sig2, use_fake_for_second)
+    p2 = sign_with_time(chpath, sig2, use_fake_for_second, gpg_homedir=gpg_homedir, signer_keyid=keyid)
     print(p2.stdout.decode(errors="ignore"))
     if not os.path.exists(sig2):
         print(_("sig2_not_found"))
@@ -409,8 +562,8 @@ def main():
         input(_('enter_to_exit'))
         sys.exit(5)
 
-    ts2, _dump = parse_sig_created_unix(sig2)
-    mpi2, _dump = parse_sig_mpi(sig2)
+    ts2, _dump = parse_sig_created_unix(sig2, gpg_homedir)
+    mpi2, _dump = parse_sig_mpi(sig2, gpg_homedir)
 
     # 新增：对比 fake_time 与签名 created 时间戳，遇到不符时打印提示框
     def print_time_box(file_name, ts, fake_time):
@@ -545,13 +698,14 @@ def main():
             print(_("derived_result_based_on", tag=dr['tag']))
             print_boxed(dr["hex_out"], dr["final_pw"])
 
-    if not use_argon2:
-        print(_("argon2_not_found"))
-        input(_('enter_to_exit'))
+        if not use_argon2:
+            print(_("argon2_not_found"))
+            input(_('enter_to_exit'))
 
-    print(_("script_finished", tmpd=tmpd))
-    print(_("script_note"))
-    input(_('enter_to_exit'))
+        print(_("script_finished", tmpd=tmpd))
+        print(_("script_note"))
+        input(_('enter_to_exit'))
+    # cleanup handled via atexit registration
 
 if __name__ == "__main__":
     main()

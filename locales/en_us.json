@@ -1,4 +1,5 @@
 {
+    "Name": "English (US)",
     "error_gpg_not_found": "Error: gpg not found. Please install GnuPG and ensure gpg is in PATH.",
     "fake_time_format_error": "Error: FAKE_TIME must be in format YYYYMMDDThhmmss (or empty)",
     "fake_time_note": "Using faked-system-time = {actual_fake} (Requested: {requested}, Card created: {created_fake})",
@@ -44,4 +45,16 @@
     "argon2_not_found": "\nNote: argon2-cffi not detected, using PBKDF2 as fallback. For better security, please install argon2-cffi.",
     "script_finished": "\nScript finished. To keep or delete temporary signature files, please check: {tmpd}",
     "script_note": "Note: This script uses MPI derivation mode; as long as the key and inputs (domain, username, password) are consistent, the results should be stable across different devices/times."
+    ,
+    "select_language_prompt": "Select language:\n",
+    "select_key_source_prompt": "Select key source:\n",
+    "key_source_physical": "Physical key / smartcard",
+    "key_source_privfile": "Private key file (import temporarily)",
+    "enter_key_file_path": "Enter path to your private key file: ",
+    "importing_key": "Importing private key into temporary GPG home...",
+    "import_failed": "Failed to import private key. gpg output:\n{output}",
+    "using_privkey_note": "Using private key file imported into temporary GPG home.",
+    "cleanup_homedir_prompt": "Temporary GPG home created at {homedir}. Will be deleted at exit unless KEEP_GPG_HOMEDIR is set.",
+    "cleanup_homedir_deleted": "Temporary GPG home {homedir} deleted.",
+    "cleanup_homedir_kept": "Keeping temporary GPG home {homedir} due to KEEP_GPG_HOMEDIR."
 }

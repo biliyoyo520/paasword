@@ -1,4 +1,5 @@
 {
+    "Name": "简体中文",
     "error_gpg_not_found": "错误：未找到 gpg。请先安装 GnuNG 并确保 gpg 在 PATH 中。",
     "fake_time_format_error": "错误：FAKE_TIME 必须形如 YYYYMMDDThhmmss（或留空）",
     "fake_time_note": "使用的 faked-system-time = {actual_fake} (请求: {requested}, 卡创建: {created_fake})",
@@ -44,4 +45,16 @@
     "argon2_not_found": "\n提示：未检测到 argon2-cffi，已使用 PBKDF2 作为退路。要更强安全请安装 argon2-cffi。",
     "script_finished": "\n脚本完成。若要保留或删除临时签名文件，请查看：{tmpd}",
     "script_note": "提示：本脚本使用 MPI 派生模式；只要 key 与输入（域名、用户名、口令）一致，结果在不同设备/时间应保持稳定。"
+    ,
+    "select_language_prompt": "请选择语言:\n",
+    "select_key_source_prompt": "请选择密钥来源:\n",
+    "key_source_physical": "实体密钥 / 智能卡",
+    "key_source_privfile": "私钥文件（临时导入）",
+    "enter_key_file_path": "请输入私钥文件路径：",
+    "importing_key": "正在将私钥导入临时 GPG home...",
+    "import_failed": "私钥导入失败，gpg 输出：\n{output}",
+    "using_privkey_note": "已将私钥临时导入 GPG home 并使用。",
+    "cleanup_homedir_prompt": "已在 {homedir} 创建临时 GPG home。默认会在退出时删除，除非设置了 KEEP_GPG_HOMEDIR。",
+    "cleanup_homedir_deleted": "已删除临时 GPG home {homedir}。",
+    "cleanup_homedir_kept": "因设置了 KEEP_GPG_HOMEDIR，保留临时 GPG home {homedir}。"
 }
